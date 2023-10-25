@@ -1,7 +1,9 @@
 import {app, desktopCapturer} from 'electron';
-import './security-restrictions';
-import {restoreOrCreateWindow} from '/@/mainWindow';
+import './vite/security-restrictions';
+import {restoreOrCreateWindow} from '/vite/mainWindow';
 import {platform} from 'node:process';
+import {DesktopScannerSender, EventSourceInitializer} from '/monitor-event-source/desktopCapture';
+
 
 /**
  * Prevent electron from running multiple instances.
@@ -38,15 +40,10 @@ app.on('activate', restoreOrCreateWindow);
 app
   .whenReady()
   .then(async () => {
-    const win = await restoreOrCreateWindow();
-    desktopCapturer.getSources({ types: ['window', 'screen'] }).then(source => {
-      console.log('Sending sources ', source);
-      win.webContents.send('SOURCES', source);
-    }).catch(err => {
-      console.log('Error retrieving sources', err);
-    });
+    const eventSourceInitializer = new EventSourceInitializer([]);
+    eventSourceInitializer.start();
   })
-  .catch(e => console.error('Failed create window:', e));
+  .catch(e => console.error('Failed create window and initialize events:', e));
 
 /**
  * Install Vue.js or any other extension in development mode only.

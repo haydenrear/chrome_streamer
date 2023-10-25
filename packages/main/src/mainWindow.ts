@@ -53,19 +53,48 @@ async function createWindow() {
   return browserWindow;
 }
 
-/**
- * Restore an existing BrowserWindow or Create a new BrowserWindow.
- */
+
 export async function restoreOrCreateWindow() {
-  let window = BrowserWindow.getAllWindows().find(w => !w.isDestroyed());
-
-  if (window === undefined) {
-    window = await createWindow();
+  const isDev = import.meta.env.VITE_DEV === 'True';
+  if (isDev) {
+    console.log('Creating dev window.');
+    return await restoreOrCreateWindowDev();
+  } else {
+    return await restoreOrCreateWindowProd();
   }
+}
 
+function doRestoreWindow(window: Electron.BrowserWindow) {
   if (window.isMinimized()) {
     window.restore();
   }
 
   window.focus();
+  return window;
+}
+
+/**
+ * Restore an existing BrowserWindow or Create a new BrowserWindow.
+ */
+export async function restoreOrCreateWindowProd() {
+
+  let window = BrowserWindow.getAllWindows()
+    .find(w => !w.isDestroyed());
+
+  if (window === undefined) {
+    window = await createWindow();
+  }
+  return doRestoreWindow(window);
+}
+
+
+export async function restoreOrCreateWindowDev() {
+  BrowserWindow.getAllWindows()
+
+    .filter(w => !w.isDestroyed())
+    .map(w => w.destroy());
+
+  const window = await createWindow();
+
+  return doRestoreWindow(window);
 }

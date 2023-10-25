@@ -1,4 +1,4 @@
-import {app} from 'electron';
+import {app, desktopCapturer} from 'electron';
 import './security-restrictions';
 import {restoreOrCreateWindow} from '/@/mainWindow';
 import {platform} from 'node:process';
@@ -37,7 +37,15 @@ app.on('activate', restoreOrCreateWindow);
  */
 app
   .whenReady()
-  .then(restoreOrCreateWindow)
+  .then(async () => {
+    const win = await restoreOrCreateWindow();
+    desktopCapturer.getSources({ types: ['window', 'screen'] }).then(source => {
+      console.log('Sending sources ', source);
+      win.webContents.send('SOURCES', source);
+    }).catch(err => {
+      console.log('Error retrieving sources', err);
+    });
+  })
   .catch(e => console.error('Failed create window:', e));
 
 /**

@@ -1,6 +1,11 @@
 import {DesktopCapturerSource, KeyboardInputEvent, MouseInputEvent, MouseWheelInputEvent} from 'electron';
 import * as Electron from 'electron';
-import {DataCaptureProcessor} from '/@/monitor-event-consumer/dataCaptureScanner';
+import {DataCaptureProcessor} from './mediaStreamDataCaptureScanner';
+import {inject, injectable, multiInject} from 'inversify';
+import {MediaStreamCaptureSubscriber} from '../monitor-event-consumer/mediaStreamCapture';
+import {DataCaptureEvent, KeydownCaptureEvent} from '../monitor-event-consumer/captureEvents';
+import {KeyboardIpcEvent} from '../monitor-event-source/domEvents';
+import * as console from 'console';
 
 export abstract class MonitorCaptureSource<T> {
   underlying: T;
@@ -9,28 +14,34 @@ export abstract class MonitorCaptureSource<T> {
     this.underlying = t;
   }
 
+  toCaptureEvent(): DataCaptureEvent | undefined {
+    return undefined;
+  }
+
 }
 
 class KeydownCaptureSource extends MonitorCaptureSource<KeyboardInputEvent> {
+
+  toCaptureEvent(): DataCaptureEvent | undefined {
+    return new KeydownCaptureEvent(new KeyboardIpcEvent(this.underlying.type, this.underlying.keyCode));
+  }
+
 }
 
 class MouseDownCaptureSource extends MonitorCaptureSource<MouseInputEvent> {
-
 }
 
 class MouseWheelCaptureSource extends MonitorCaptureSource<MouseWheelInputEvent> {
-
 }
 
 class DisplayMonitorCaptureSource extends MonitorCaptureSource<DesktopCapturerSource> {
-
 }
 
 interface MonitoringCaptureProcess<T extends MonitorCaptureSource<U>, U> {
   monitorCapture: (monitorSource: T) => void;
 }
 
-abstract class MatchingMonitorCaptureProcess<T extends MonitorCaptureSource<U>, U> implements MonitoringCaptureProcess<T, U> {
+export abstract class MatchingMonitorCaptureProcess<T extends MonitorCaptureSource<U>, U> implements MonitoringCaptureProcess<T, U> {
 
   abstract matches<MatchT extends MonitorCaptureSource<any>>(t: MatchT): boolean;
 
@@ -38,26 +49,44 @@ abstract class MatchingMonitorCaptureProcess<T extends MonitorCaptureSource<U>, 
 
 }
 
+@injectable()
 export class CaptureSourceConsumer {
 
-  sources: Array<MatchingMonitorCaptureProcess<any, any>>
+  sources: MatchingMonitorCaptureProcess<MonitorCaptureSource<any>, any>[]
 
-  constructor(sources: Array<MatchingMonitorCaptureProcess<any, any>>) {
+  constructor(
+    @multiInject("MatchingMonitorCaptureProcess") sources: MatchingMonitorCaptureProcess<any, any>[]
+  ) {
     this.sources = sources;
   }
 
   async consumeCapture<EventT extends Electron.Event>(event: EventT, source: any[], channel: string) {
-    for (const val of source) {
-      const capture = await this.createMonitorCaptureSource(event, val, channel);
-      if (capture)  {
-        let foundToCapture = this.sources
-          .find(s => s.matches(capture));
-        await foundToCapture?.monitorCapture(capture);
-      }
+    console.log("Consume capture for channel", channel);
+    if (source instanceof Array) {
+      await Promise.all(
+        source.map(async val => await this.singleSource(event, val, channel)))
+        .catch(err => console.log("Error consuming captures", err));
+    } else {
+      await this.singleSource(event, source, channel);
+      console.log("Received event", event, "with source", source);
     }
   }
 
+  private async singleSource<EventT extends Electron.Event>(event: EventT, val: any, channel: string) {
+    return await this.createMonitorCaptureSource(event, val, channel)
+      ?.then(capture => {
+          console.log('Created capture', capture);
+          if (capture)
+            this.sources
+              ?.find(s => s?.matches(capture))
+              ?.monitorCapture(capture);
+        },
+      )
+      .catch(err => console.log('Error consuming capture', err));
+  }
+
   async createMonitorCaptureSource<EventT extends Electron.Event>(event: EventT, source: any, channel: string) {
+    console.log("Found event", channel, source);
     switch (channel) {
       case 'SOURCES':
         return new DisplayMonitorCaptureSource(source as DesktopCapturerSource);
@@ -73,13 +102,13 @@ export class CaptureSourceConsumer {
   }
 }
 
-
-class CaptureDisplaySource implements MatchingMonitorCaptureProcess<DisplayMonitorCaptureSource, DesktopCapturerSource> {
+@injectable()
+export class CaptureDisplaySource implements MatchingMonitorCaptureProcess<DisplayMonitorCaptureSource, DesktopCapturerSource> {
 
   dataCaptureProcessor: DataCaptureProcessor;
 
-  constructor() {
-    this.dataCaptureProcessor = new DataCaptureProcessor();
+  constructor(@inject("DataCaptureProcessor") dataCaptureProcessor: DataCaptureProcessor) {
+    this.dataCaptureProcessor = dataCaptureProcessor;
   }
 
   async monitorCapture(monitorSource: MonitorCaptureSource<DesktopCapturerSource>) {
@@ -101,14 +130,62 @@ class CaptureDisplaySource implements MatchingMonitorCaptureProcess<DisplayMonit
     } as MediaStreamConstraints;
   }
 
-  handleStream(stream: any, id: any) {
-    const outDirectory = import.meta.env.VITE_OUT_DIR;
-    const recorder = new MediaRecorder(stream, {mimeType: 'video/webm'});
-    this.dataCaptureProcessor.subscribe(outDirectory, id, recorder);
+  handleStream(stream: MediaStream, id: any) {
+    this.dataCaptureProcessor.subscribe(new MediaStreamCaptureSubscriber(stream, id));
   }
 
   matches<MatchT extends MonitorCaptureSource<any>>(t: MatchT): boolean {
     return t instanceof DisplayMonitorCaptureSource;
+  }
+
+}
+
+@injectable()
+abstract class CaptureEventListenerSource<M extends MonitorCaptureSource<T>, T> extends MatchingMonitorCaptureProcess<M, T> {
+
+  dataCaptureProcessor: DataCaptureProcessor;
+
+  constructor(
+    @inject("DataCaptureProcessor") dataCaptureProcessor: DataCaptureProcessor,
+  ) {
+    super();
+    this.dataCaptureProcessor = dataCaptureProcessor;
+  }
+
+  async monitorCapture(monitorSource: M) {
+    // idempotent subscribe event
+    const dataCaptureEvent = monitorSource.toCaptureEvent();
+    if (dataCaptureEvent)
+      this.dataCaptureProcessor.nextValue(dataCaptureEvent);
+    else console.log("Failed to create capture event for monitor source", monitorSource);
+  }
+
+
+}
+
+@injectable()
+export class CaptureKeyboardSource extends CaptureEventListenerSource<KeydownCaptureSource, KeyboardInputEvent> {
+
+  matches<MatchT>(t: MatchT): boolean {
+    return t instanceof KeydownCaptureSource;
+  }
+
+}
+
+@injectable()
+export class CaptureMouseSource extends CaptureEventListenerSource<MouseDownCaptureSource, MouseInputEvent> {
+
+  matches<MatchT>(t: MatchT): boolean {
+    return t instanceof MouseDownCaptureSource;
+  }
+
+}
+
+@injectable()
+export class CaptureMouseWheelInputEvent extends CaptureEventListenerSource<MouseWheelCaptureSource, MouseWheelInputEvent> {
+
+  matches<MatchT>(t: MatchT): boolean {
+    return t instanceof MouseDownCaptureSource;
   }
 
 }

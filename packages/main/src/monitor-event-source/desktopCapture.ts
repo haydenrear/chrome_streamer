@@ -1,17 +1,54 @@
-import {desktopCapturer, ipcRenderer} from 'electron';
-import {Publisher, Subscriber} from '/@/publisher';
-import {restoreOrCreateWindow} from '/@/vite/mainWindow';
+import {BrowserWindow, desktopCapturer, ipcRenderer} from 'electron';
+import {restoreOrCreateWindow} from '../vite/mainWindow';
+import {injectable, multiInject, unmanaged} from 'inversify';
+import {IpcDomEvent, KeyboardIpcEvent, MouseIpcEvent, MouseWheelIpcEvent} from '../monitor-event-source/domEvents';
+import {Browser} from 'playwright';
 
-interface EventSourceInit {
-    start: () => void;
+@injectable()
+export abstract class CaptureEventSourceInitializer {
+    abstract start(): void;
 }
 
-class DesktopCaptureEventSource implements EventSourceInit {
+@injectable()
+export abstract class BaseDelegatingEventSourceInitializer<T extends CaptureEventSourceInitializer> extends CaptureEventSourceInitializer {
+    eventSources: Array<T>
+
+    constructor(
+      @multiInject("IpcRenderThreadInitializer") eventSources: T[]
+    ) {
+        super();
+        this.eventSources = eventSources
+        console.log("Constructing event source with", this.eventSources.length, "event sources.");
+    }
+
+    start(): void {
+        console.log("Initializing event source with", this.eventSources.length, "event sources.");
+        this.eventSources.forEach(e => {
+            console.log("Starting event capture source initializer", e);
+            try {
+                e.start();
+            } catch (ex) {
+                console.log("Failed to initialize", e, "with exception", ex);
+            }
+        });
+    }
+}
+
+@injectable()
+export abstract class IpcRenderThreadInitializer extends CaptureEventSourceInitializer{
+}
+
+
+@injectable()
+export class DesktopCaptureEventSource extends IpcRenderThreadInitializer {
 
     private win: Electron.BrowserWindow | undefined;
 
-    start() {
-        setInterval(this.doAddRemoveSources.bind(this), 3000);
+    start() : void {
+        console.log("Initializing desktop capture event source.");
+        this.initialize()
+          .then(_ => setInterval(this.doAddRemoveSources.bind(this), 3000))
+          .catch(err => console.log("Failed to initialize desktop capture source with err", err));
     }
 
     async initialize() {
@@ -27,74 +64,113 @@ class DesktopCaptureEventSource implements EventSourceInit {
     }
 
     private doAddRemoveSources() {
-        desktopCapturer.getSources({types: ['window', 'screen']})
-          .then(source => source?.forEach(
-            nextSources => this.doNext(nextSources))
-          )
-          .catch(err => console.log("Error adding/removing sources", err));
+        this.initialize().then(_ => {
+            desktopCapturer.getSources({types: ['window', 'screen']})
+              .then(source => source?.forEach(
+                nextSources => this.doNext(nextSources))
+              )
+              .catch(err => console.log("Error adding/removing sources", err));
+        })
     }
 
 }
 
-abstract class EventListenerEventSource<T extends Event> implements EventSourceInit {
+@injectable()
+export abstract class WindowEventListenerEventSource<T extends Event> extends CaptureEventSourceInitializer {
 
     channel: string
     event: string
 
-    constructor(channel: string, event: string) {
+
+    constructor(@unmanaged() channel: string, @unmanaged() event: string) {
+        super();
         this.channel = channel
         this.event = event
     }
 
-    start(): void {
+    start(){
+        console.log("Initializing window event source initializer for channel", this.channel, "and event", this.event)
         window.addEventListener(
           this.event,
-            event => ipcRenderer.send(this.channel, this.createEvent(event as T))
+          event => ipcRenderer.send(this.channel, this.createEvent(event as T)),
         )
     }
 
-    abstract createEvent(event: T): any;
+    abstract createEvent(event: T): IpcDomEvent;
 
 }
 
-class MouseEventListenerEventSource extends EventListenerEventSource<MouseEvent> {
-    createEvent(event: MouseEvent): any {
-        return {
-            type: 'mouse',
-            button: event.button
-        }
+@injectable()
+export class MouseEventListenerEventSource extends WindowEventListenerEventSource<MouseEvent> {
+
+    constructor() {
+        super('user-input', 'mousedown');
+    }
+
+    createEvent(event: MouseEvent): IpcDomEvent {
+        console.log("Received mouse event.")
+        return new MouseIpcEvent(event.type, event.button.toString());
+        //   {
+        //     type: 'mouse',
+        //     button: event.button
+        // }
     }
 }
 
-class KeyboardEventListenerEventSource extends EventListenerEventSource<KeyboardEvent> {
-    createEvent(event: KeyboardEvent): any {
-        return {
-            type: 'keyboard',
-            key: event.key
-        }
+@injectable()
+export class KeyboardEventListenerEventSource extends WindowEventListenerEventSource<KeyboardEvent> {
+
+    constructor() {
+        super('user-input', 'keydown');
+    }
+
+    createEvent(event: KeyboardEvent): IpcDomEvent {
+        console.log("Received keyboard event. Creating keyboard ipc event.")
+        return new KeyboardIpcEvent(
+            'keyboard',
+            event.key
+        )
     }
 }
 
-class WheelEventListenerEventSource extends EventListenerEventSource<WheelEvent> {
-    createEvent(event: WheelEvent): any {
-        return {
-            type: 'wheel',
-            deltaX: event.deltaX,
-            deltaY: event.deltaY,
-            deltaZ: event.deltaZ
-        }
+@injectable()
+export class WheelEventListenerEventSource extends WindowEventListenerEventSource<WheelEvent> {
+
+    constructor() {
+        super('user-input', 'wheel');
+    }
+
+    createEvent(event: WheelEvent): IpcDomEvent {
+        return new MouseWheelIpcEvent(event.type, event.button.toString());
+        // return {
+        //     type: 'wheel',
+        //     deltaX: event.deltaX,
+        //     deltaY: event.deltaY,
+        //     deltaZ: event.deltaZ
+        // }
     }
 }
 
-export class EventSourceInitializer implements EventSourceInit{
-    eventSources: Array<EventSourceInit>
+@injectable()
+export class IpcRenderEventSourceInitializer extends BaseDelegatingEventSourceInitializer<IpcRenderThreadInitializer> {
 
-    constructor(eventSources: Array<EventSourceInit>) {
-        this.eventSources = eventSources
+    constructor(
+      @multiInject("IpcRenderThreadInitializer") eventSources: IpcRenderThreadInitializer[]
+    ) {
+        super(eventSources);
+        console.log("Constructing event source with", this.eventSources.length, "event sources.");
     }
 
-    start(): void {
-        this.eventSources.forEach(e => e.start());
+}
+
+@injectable()
+export class EventListenerEventSourceInitializer extends BaseDelegatingEventSourceInitializer<WindowEventListenerEventSource<Event>> {
+
+    constructor(
+      @multiInject("WindowEventListenerEventSource") eventSources: WindowEventListenerEventSource<Event>[]
+    ) {
+        super(eventSources);
+        console.log("Constructing event source with", this.eventSources.length, "event sources.");
     }
 
 }

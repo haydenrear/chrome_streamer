@@ -2,13 +2,15 @@
   "compilerOptions": {
     "module": "esnext",
     "target": "esnext",
-    "sourceMap": false,
+//    "sourceMap": false,
     "moduleResolution": "Node",
     "skipLibCheck": true,
     "strict": true,
     "isolatedModules": true,
-    "types": ["node"],
+    "types": ["reflect-metadata"],
     "baseUrl": ".",
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
     "paths": {
       "/@/*": ["./src/*"]
     }

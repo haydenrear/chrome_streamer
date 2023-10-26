@@ -1,15 +1,31 @@
+import "reflect-metadata"
 import type {Mocked, MockedClass, MockedObject} from 'vitest';
 import {beforeEach, expect, test, vi} from 'vitest';
 import {restoreOrCreateWindow} from '../src/vite/mainWindow';
 
 import {BrowserWindow, desktopCapturer, DesktopCapturerSource} from 'electron';
 
-import {DesktopScannerSender} from '../src/monitor-event-source/desktopCapture';
-import {createPath, DataCaptureProcessor, DataCapturerSubscriber, DataCaptureScanner} from '../src/monitor-event-consumer/dataCaptureScanner';
+import {DataCaptureProcessor} from '../src/monitor-event-consumer/mediaStreamDataCaptureScanner';
 import * as fs from 'fs';
 import * as path from 'path';
 import {MonitorCaptureSource} from '../src/monitor-event-consumer/monitorCapture';
 import exp = require('constants');
+import {
+  CaptureEventSourceInitializer, EventListenerEventSourceInitializer,
+  IpcRenderEventSourceInitializer,
+  IpcRenderThreadInitializer, WindowEventListenerEventSource,
+} from '../src/monitor-event-source/desktopCapture';
+import {container} from '../src/bindings';
+import {
+  MediaStreamCaptureSubscriber,
+  MediaStreamDataCaptureScanner,
+} from '../src/monitor-event-consumer/mediaStreamCapture';
+import {createPath} from '../src/utils/ioUtils';
+import {
+  EventListenerCaptureSubscriber,
+  EventListenerEventSerializer,
+} from '../src/monitor-event-consumer/eventListenerEventCaptureSubscriber';
+import {IpcRenderCommand} from '../../preload/src/versions';
 
 /**
  * Mock real electron BrowserWindow API
@@ -98,8 +114,8 @@ test('Desktop scanner sender should send sources every 3 seconds.', async () => 
 
   expect(found).to.be.equal(mock.instances[0])
 
-  const desktopScannerSender = new DesktopScannerSender();
-  await desktopScannerSender.initialize();
+  const desktopScannerSender = new IpcRenderEventSourceInitializer([]);
+  await desktopScannerSender.start();
 
   expect(desktopScannerSender['win']).to.not.be.equal(undefined);
 
@@ -149,10 +165,10 @@ test('Data capture scanner.', async () => {
 
   const outDirectory = import.meta.env.VITE_TEST_OUT_DIR;
 
-  const dataCaptureScanner = new DataCaptureScanner();
+  const dataCaptureScanner = new MediaStreamDataCaptureScanner();
   console.log(outDirectory)
 
-  dataCaptureScanner.subscribe(new DataCapturerSubscriber(outDirectory, mediaRecorderMock, 'test_out'))
+  dataCaptureScanner.subscribe(new MediaStreamCaptureSubscriber(outDirectory, mediaRecorderMock, 'test_out'))
   dataCaptureScanner.start();
 
   await new Promise<void>((resolve, reject) => {
@@ -179,4 +195,40 @@ test('Test vite sources correct splitting.', () => {
   let compareTo = ['keydown', 'mousedown', 'wheel'];
   expect(comparison.length).not.to.equal(0);
   comparison.map((v, i) => expect(v).to.equal(compareTo[i]));
+})
+
+
+test('Test bindings', async () => {
+  const ipcInitializer = container.getAll<IpcRenderThreadInitializer>("IpcRenderThreadInitializer");
+  expect(ipcInitializer.length).to.equal(1);
+
+  const windowInitializer = container.getAll<WindowEventListenerEventSource>("WindowEventListenerEventSource");
+  expect(windowInitializer.length).to.equal(3);
+
+  const ipcSourceInit = container.get<IpcRenderEventSourceInitializer>("IpcRenderEventSourceInitializer");
+  expect(ipcSourceInit.eventSources.length).to.be.equal(1);
+
+  const windowSourceInit = container.get<EventListenerEventSourceInitializer>("EventListenerEventSourceInitializer");
+  expect(windowSourceInit.eventSources.length).to.be.equal(3);
+
+  const processor = container.get<DataCaptureProcessor>("DataCaptureProcessor");
+  expect(processor).not.to.be.equal(undefined);
+
+  const eventListenerCapturer = container.get<EventListenerCaptureSubscriber>("EventListenerCaptureSubscriber");
+  expect(eventListenerCapturer.eventListenerSerializers.length).to.be.equal(3);
+  expect(eventListenerCapturer.eventListenerProperties.outDirectory).to.not.be.equal(undefined);
+
+  const dataCaptureProcessor = container.get<DataCaptureProcessor>("DataCaptureProcessor");
+  expect(dataCaptureProcessor.dataCaptureScanner.length).to.be.equal(2);
+
+  const renderCommand = container.get<IpcRenderCommand>("IpcRenderCommand");
+  expect(renderCommand.ipcProperties.length).not.to.be.equal(undefined);
+  expect(renderCommand.mainProperties.length).not.to.be.equal(undefined);
+  expect(renderCommand.ipcProperties.length).not.to.be.equal(0);
+  expect(renderCommand.mainProperties.length).not.to.be.equal(0);
+
+  const eventSerializers = container.getAll<EventListenerEventSerializer>("EventListenerEventSerializer");
+  expect(eventSerializers.length).to.equal(3);
+  const capture = container.get<EventListenerCaptureSubscriber>("EventListenerCaptureSubscriber");
+  expect(capture.eventListenerSerializers.length).to.equal(3);
 })

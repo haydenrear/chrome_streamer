@@ -1,8 +1,10 @@
-import {app, desktopCapturer} from 'electron';
+import "reflect-metadata"
+import {app, desktopCapturer, ipcMain} from 'electron';
 import './vite/security-restrictions';
-import {restoreOrCreateWindow} from '/vite/mainWindow';
 import {platform} from 'node:process';
-import {DesktopScannerSender, EventSourceInitializer} from '/monitor-event-source/desktopCapture';
+import {restoreOrCreateWindow} from '/@/vite/mainWindow';
+import {IpcRenderEventSourceInitializer} from '/@/monitor-event-source/desktopCapture';
+import {container} from '/@/bindings';
 
 
 /**
@@ -40,11 +42,12 @@ app.on('activate', restoreOrCreateWindow);
 app
   .whenReady()
   .then(async () => {
-    const eventSourceInitializer = new EventSourceInitializer([]);
+    const window = await restoreOrCreateWindow();
+    const eventSourceInitializer = container.get<IpcRenderEventSourceInitializer>("IpcRenderEventSourceInitializer");
+    console.log("Starting event source initializer.");
     eventSourceInitializer.start();
   })
   .catch(e => console.error('Failed create window and initialize events:', e));
-
 /**
  * Install Vue.js or any other extension in development mode only.
  * Note: You must install `electron-devtools-installer` manually

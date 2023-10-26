@@ -1,10 +1,22 @@
+import {injectable} from 'inversify';
+
 export interface Subscriber<T> {
 
     doNext: (value: T) => void;
 
 }
 
-export class Publisher<T, S extends Subscriber<T>> {
+export interface Publisher<T, S extends Subscriber<T>> {
+
+    subscribe: (subscriber: S) => void;
+
+    nextValue: (nextValue: T) => void;
+
+}
+
+
+@injectable()
+export abstract class AbstractPublisher<T, S extends Subscriber<T>> implements Publisher<T, S>{
 
     protected subscribers: Array<S>;
 

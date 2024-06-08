@@ -26,6 +26,9 @@ import {
   EventListenerEventSerializer,
 } from '../src/monitor-event-consumer/eventListenerEventCaptureSubscriber';
 import {IpcRenderCommand} from '../../preload/src/versions';
+import {pathToFileURL} from 'url';
+import {openAsBlob, openSync, readFileSync} from 'fs';
+import * as wasi from 'wasi';
 
 /**
  * Mock real electron BrowserWindow API
@@ -231,4 +234,6 @@ test('Test bindings', async () => {
   expect(eventSerializers.length).to.equal(3);
   const capture = container.get<EventListenerCaptureSubscriber>("EventListenerCaptureSubscriber");
   expect(capture.eventListenerSerializers.length).to.equal(3);
-})
+});
+
+

@@ -6,7 +6,7 @@ import {
   IpcRenderEventSourceInitializer,
   IpcRenderThreadInitializer,
   KeyboardEventListenerEventSource,
-  MouseEventListenerEventSource,
+  MouseEventListenerEventSource, NoOp,
   WheelEventListenerEventSource,
   WindowEventListenerEventSource,
 } from './monitor-event-source/desktopCapture';
@@ -34,6 +34,7 @@ import {IpcDomEvent} from '/@/monitor-event-source/domEvents';
 export const container = new Container({defaultScope: "Singleton"});
 
 container.bind<IpcRenderThreadInitializer>("IpcRenderThreadInitializer").to(DesktopCaptureEventSource)
+// container.bind<IpcRenderThreadInitializer>("IpcRenderThreadInitializer").to(NoOp)
 container.bind<IpcRenderEventSourceInitializer>("IpcRenderEventSourceInitializer").to(IpcRenderEventSourceInitializer);
 
 container.bind<WindowEventListenerEventSource<Event>>("WindowEventListenerEventSource").to(WheelEventListenerEventSource);

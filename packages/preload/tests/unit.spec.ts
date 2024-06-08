@@ -1,6 +1,11 @@
 import {createHash} from 'crypto';
 import {expect, test} from 'vitest';
 import {sha256sum, versions} from '../src';
+import "reflect-metadata"
+import * as path from 'path';
+import {openSync, readFileSync} from 'fs';
+
+
 
 test('versions', async () => {
   expect(versions).toBe(process.versions);
@@ -13,3 +18,8 @@ test('nodeCrypto', async () => {
 
   expect(sha256sum(testString)).toBe(expectedHash);
 });
+
+test('test load', async() => {
+  console.log(log());
+});
+

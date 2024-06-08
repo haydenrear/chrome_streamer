@@ -1,7 +1,9 @@
 import {chrome} from '../../.electron-vendors.cache.json';
+import wasm from 'vite-plugin-wasm';
 import {preload} from 'unplugin-auto-expose';
 import {join} from 'node:path';
 import {injectAppVersion} from '../../version/inject-app-version-plugin.mjs';
+import topLevelAwait from 'vite-plugin-top-level-await';
 
 const PACKAGE_ROOT = __dirname;
 const PROJECT_ROOT = join(PACKAGE_ROOT, '../..');
@@ -33,7 +35,7 @@ const config = {
     emptyOutDir: true,
     reportCompressedSize: false,
   },
-  plugins: [preload.vite(), injectAppVersion()],
+  plugins: [preload.vite(), injectAppVersion(), wasm(), topLevelAwait()],
 };
 
 export default config;

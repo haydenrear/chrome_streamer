@@ -7,6 +7,7 @@ import {
   IpcRenderEventSourceInitializer,
 } from '/@/monitor-event-source/desktopCapture';
 
+
 @injectable()
 export class IpcRenderProperties extends InjectableProperties {
   constructor() {
@@ -65,8 +66,7 @@ export class IpcRenderCommand {
         async (event: any, sources: any) => {
 
           if (this && this.captureConsumer) {
-            await this.captureConsumer.consumeCapture(
-              event, sources, channel);
+            await this.captureConsumer.consumeCapture(event, sources, channel);
           } else {
             console.log('Error capture consumer was none in ipc render.');
           }
@@ -77,7 +77,7 @@ export class IpcRenderCommand {
   }
 
   doWindowInitializer() {
-    this.sourceInitializer.start()
+    this.sourceInitializer.start();
   }
 
 }

@@ -5,7 +5,7 @@
     "sourceMap": false,
     "moduleResolution": "Node",
     "skipLibCheck": true,
-    "strict": true,
+    "strict": false,
     "isolatedModules": true,
     "types": ["reflect-metadata"],
     "baseUrl": ".",

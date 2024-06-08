@@ -2,7 +2,7 @@ import {BrowserWindow, desktopCapturer, ipcRenderer} from 'electron';
 import {restoreOrCreateWindow} from '../vite/mainWindow';
 import {injectable, multiInject, unmanaged} from 'inversify';
 import {IpcDomEvent, KeyboardIpcEvent, MouseIpcEvent, MouseWheelIpcEvent} from '../monitor-event-source/domEvents';
-import {Browser} from 'playwright';
+import "reflect-metadata"
 
 @injectable()
 export abstract class CaptureEventSourceInitializer {
@@ -38,6 +38,12 @@ export abstract class BaseDelegatingEventSourceInitializer<T extends CaptureEven
 export abstract class IpcRenderThreadInitializer extends CaptureEventSourceInitializer{
 }
 
+@injectable()
+export class NoOp extends IpcRenderThreadInitializer {
+    start(): void {
+    }
+
+}
 
 @injectable()
 export class DesktopCaptureEventSource extends IpcRenderThreadInitializer {

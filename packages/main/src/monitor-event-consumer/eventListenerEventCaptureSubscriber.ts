@@ -17,6 +17,7 @@ export class EventListenerCaptureScanner extends DataCaptureScanner<DomDataCaptu
 
   constructor(@inject("EventListenerCaptureSubscriber")  writeDomEventsToFileSubscriber: EventListenerCaptureSubscriber){
     super();
+    this.start();
     this.subscribe(writeDomEventsToFileSubscriber);
   }
 

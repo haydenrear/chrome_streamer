@@ -1,3 +1,8 @@
+// import topLevelAwait from 'vite-plugin-top-level-await';
+import {injectAppVersion} from './version/inject-app-version-plugin.mjs';
+import wasm from 'vite-plugin-wasm';
+import topLevelAwait from 'vite-plugin-top-level-await';
+
 /**
  * Configuration for the global end-to-end testing,
  * placed in the project's root 'tests' folder.
@@ -18,6 +23,9 @@ const config = {
     testTimeout: 30_000,
     hookTimeout: 30_000,
   },
+  plugins: [
+    wasm(), topLevelAwait()
+  ],
 };
 
 export default config;

@@ -1,4 +1,5 @@
 import {node} from '../../.electron-vendors.cache.json';
+import wasm from 'vite-plugin-wasm';
 import {join} from 'node:path';
 import {injectAppVersion} from '../../version/inject-app-version-plugin.mjs';
 
@@ -37,7 +38,7 @@ const config = {
     emptyOutDir: true,
     reportCompressedSize: false,
   },
-  plugins: [injectAppVersion()],
+  plugins: [injectAppVersion(), wasm()],
 };
 
 export default config;

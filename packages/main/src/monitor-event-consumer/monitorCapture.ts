@@ -6,6 +6,7 @@ import {MediaStreamCaptureSubscriber} from '../monitor-event-consumer/mediaStrea
 import {DataCaptureEvent, KeydownCaptureEvent} from '../monitor-event-consumer/captureEvents';
 import {KeyboardIpcEvent} from '../monitor-event-source/domEvents';
 import * as console from 'console';
+import {EventListenerProperties} from '/@/utils/properties';
 
 export abstract class MonitorCaptureSource<T> {
   underlying: T;
@@ -106,9 +107,14 @@ export class CaptureSourceConsumer {
 export class CaptureDisplaySource implements MatchingMonitorCaptureProcess<DisplayMonitorCaptureSource, DesktopCapturerSource> {
 
   dataCaptureProcessor: DataCaptureProcessor;
+  eventListenerProperties: EventListenerProperties;
 
-  constructor(@inject("DataCaptureProcessor") dataCaptureProcessor: DataCaptureProcessor) {
+  constructor(
+    @inject("DataCaptureProcessor") dataCaptureProcessor: DataCaptureProcessor,
+    @inject("EventListenerProperties") eventListenerProperties: EventListenerProperties
+  ) {
     this.dataCaptureProcessor = dataCaptureProcessor;
+    this.eventListenerProperties = eventListenerProperties;
   }
 
   async monitorCapture(monitorSource: MonitorCaptureSource<DesktopCapturerSource>) {
@@ -131,7 +137,7 @@ export class CaptureDisplaySource implements MatchingMonitorCaptureProcess<Displ
   }
 
   handleStream(stream: MediaStream, id: any) {
-    this.dataCaptureProcessor.subscribe(new MediaStreamCaptureSubscriber(stream, id));
+    this.dataCaptureProcessor.subscribe(new MediaStreamCaptureSubscriber(stream, id, this.eventListenerProperties));
   }
 
   matches<MatchT extends MonitorCaptureSource<any>>(t: MatchT): boolean {

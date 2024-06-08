@@ -1,4 +1,4 @@
-import {injectable} from 'inversify';
+import {inject, injectable} from 'inversify';
 import {AbstractPublisher, Subscriber} from '/@/publisher';
 import {
   CaptureSourceClosedEvent,
@@ -9,15 +9,31 @@ import {
 import {DataCaptureScanner} from '../monitor-event-consumer/mediaStreamDataCaptureScanner';
 import {FileStreamWriterHolder} from '../monitor-event-consumer/writeFileStream';
 import {createPath} from '../utils/ioUtils';
+import {EventListenerProperties} from '/@/utils/properties';
+import {EventListenerEventSerializer} from '/@/monitor-event-consumer/eventListenerEventCaptureSubscriber';
 
+interface SerializeStartEvent {
+  id: string;
+  startTime: number;
+}
+
+interface SerializeEndEvent {
+  id: string;
+  endTime: number;
+}
 
 @injectable()
 export class MediaStreamDataCaptureScanner
   extends DataCaptureScanner<DataCaptureEvent, MediaStreamCaptureSubscriber>
   implements Subscriber<DataCaptureEvent>{
 
-  constructor() {
+  eventListenerProperties: EventListenerProperties
+
+  constructor(
+    @inject("EventListenerProperties") eventListenerProperties: EventListenerProperties
+  ) {
     super();
+    this.eventListenerProperties = eventListenerProperties;
     this.start();
   }
 
@@ -46,6 +62,7 @@ export class MediaStreamDataCaptureScanner
     }
   }
 
+
   doNext(value: DataCaptureEvent): void {
     if (value instanceof CaptureSourceClosedEvent) {
       console.log('Removing subscriber', value.id, 'from publisher.');
@@ -69,8 +86,10 @@ export class MediaStreamCaptureSubscriber implements Subscriber<DataCaptureEvent
   path: string;
   recorder: MediaRecorder;
   id: string;
+  eventListenerProperties: EventListenerProperties;
 
-  constructor(mediaStream: MediaStream, id: string) {
+  constructor(mediaStream: MediaStream, id: string, eventListenerProperties: EventListenerProperties) {
+    this.eventListenerProperties = eventListenerProperties;
     this.id = id;
     this.path = import.meta.env.VITE_OUT_DIR;
     this.outFile = new FileStreamWriterHolder(createPath(this.path, this.id))
@@ -84,16 +103,37 @@ export class MediaStreamCaptureSubscriber implements Subscriber<DataCaptureEvent
       this.recorder.requestData();
     } else if (captureEvent instanceof CaptureSourceClosedEvent) {
       console.log(`Closing ${this.path} for ${this.id}.`);
+      await this.writeEndEvent();
       this.outFile?.end();
     } else if (captureEvent instanceof CaptureSourceStartEvent) {
       console.log("Starting capture for", this.id);
+      await this.writeStartEvent();
       this.recorder.start();
     }
   }
 
+  private async writeEndEvent() {
+    const endTime = new Date().getMilliseconds();
+    console.log("Writing start event for", this.id, "with start time", endTime);
+    await this.writeEvent('start', {endTime: endTime, id: this.id} as SerializeEndEvent);
+  }
+
+  private async writeStartEvent() {
+    const startTime = new Date().getMilliseconds();
+    console.log("Writing start event for", this.id, "with start time", startTime);
+    await this.writeEvent('start', {startTime: startTime, id: this.id} as SerializeStartEvent);
+  }
+
+  private async writeEvent<T>(prefix: string, event: T) {
+    const startEventFile = new FileStreamWriterHolder(createPath(
+      this.eventListenerProperties.messageDirectory, `${prefix}_${this.id}`, '.metadata'));
+    await startEventFile?.addSerializeData(event);
+    startEventFile?.end();
+  }
+
   async addData(event: BlobEvent): Promise<void> {
     const read = event.data.stream();
-    await this.outFile?.addData(async () => read)
+    await this.outFile?.addData(async () => read);
   }
 
 }
